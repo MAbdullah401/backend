@@ -3,28 +3,27 @@ import cors from "cors";
 import axios from "axios";
 import dotenv from "dotenv";
 import mongoose from "mongoose";
+import Prompt from "./models/Prompt.js";
 
 dotenv.config();
 
 const app = express();
 app.use(cors());
 app.use(express.json());
-mongoose.connect(process.env.MONGO_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-})
-.then(() => console.log("✅ Connected to MongoDB"))
-.catch((err) => console.error("❌ MongoDB connection error:", err));
 
+// ✅ Connect MongoDB and seed default prompt
+mongoose
+  .connect(process.env.MONGO_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+  })
+  .then(async () => {
+    console.log("✅ Connected to MongoDB");
 
-// 🧠 Chat Route: Finance Assistant
-app.post("/api/chat", async (req, res) => {
-  const userMessages = req.body.messages || [];
-
-  const messages = [
-    {
-      role: "system",
-      content: `You are a highly specialized AI Finance Assistant. You ONLY answer questions about:
+    const existingPrompt = await Prompt.findOne();
+    if (!existingPrompt) {
+      await Prompt.create({
+        prompt: `You are a highly specialized AI Finance Assistant. You ONLY answer questions about:
 - Personal finance
 - Budgeting
 - Investments
@@ -35,6 +34,35 @@ app.post("/api/chat", async (req, res) => {
 
 If a user asks anything else, respond with:
 "I'm a finance assistant. Please ask finance-related questions only."`,
+      });
+      console.log("📝 Default system prompt inserted into MongoDB.");
+    }
+  })
+  .catch((err) => console.error("❌ MongoDB connection error:", err));
+// 🧠 Chat Route: Finance Assistant
+app.post("/api/chat", async (req, res) => {
+  const userMessages = req.body.messages || [];
+
+  // Load latest system prompt from DB
+  const promptDoc = await Prompt.findOne().sort({ updatedAt: -1 });
+  const systemPrompt =
+    promptDoc?.prompt ||
+    `You are a highly specialized AI Finance Assistant. You ONLY answer questions about:
+- Personal finance
+- Budgeting
+- Investments
+- Saving plans
+- Taxes
+- Financial planning
+- Business finance
+
+If a user asks anything else, respond with:
+"I'm a finance assistant. Please ask finance-related questions only."`;
+
+  const messages = [
+    {
+      role: "system",
+      content: systemPrompt,
     },
     ...userMessages,
   ];
